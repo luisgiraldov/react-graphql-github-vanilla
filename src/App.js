@@ -2,6 +2,9 @@ import React, { Component } from 'react';
 // import React, {useState, useEffect} from 'react';
 import axios from 'axios';
 
+//components
+import Organization from './components/organization/organization.component';
+
 //The process.env.REACT_APP_GITHUB_PERSONAL_ACCESS_TOKEN comes from the .env file that contains our personal access token from github
 //remember to add your personal github access token inside .env (if you don't have one file named like such, please create one)
 const axiosGitHubGraphQL = axios.create({
@@ -25,6 +28,8 @@ class App extends Component {
 
   state = {
     path: "the-road-to-learn-react/the-road-to-learn-react",
+    organization: null,
+    errors: null
   };
 
   componentDidMount() {
@@ -49,11 +54,15 @@ class App extends Component {
     axiosGitHubGraphQL.post('', {
       query: GET_ORGANIZATION
     })
-    .then(result => console.log(result));
+    .then(result => this.setState(() => ({
+        organization: result.data.data.organization,
+        errors: result.data.errors,
+      })),
+    );
   };
 
   render() {
-    const { path } = this.state;
+    const { path, organization, errors } = this.state;
 
     return (
       <div>
@@ -68,6 +77,11 @@ class App extends Component {
         </form>
         <hr />
         {/* Here comes the result! */}
+        { organization ? (
+            <Organization organization={organization} errors={errors} />) 
+            :
+            (<p>No Information yet...</p>)
+        }
       </div>
     );
   }
