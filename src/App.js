@@ -24,6 +24,88 @@ const GET_ORGANIZATION = `{
   }
 }`;
 
+//GraphQL query to get repositories
+const GET_REPOSITORY_OF_ORGANIZATION = `{
+  organization(login: "the-road-to-learn-react") {
+    name
+    url
+    repository(name: "the-road-to-learn-react") {
+      name
+      url
+    }
+  }
+}`;
+
+//GraphQL query to get Issues of repository
+const GET_ISSUES_OF_REPOSITORY = `
+  query ($organization: String!, $repository: String!) {
+    organization(login: $organization) {
+      name
+      url
+      repository(name: $repository) {
+        name
+        url
+        issues(last: 5) {
+          edges {
+            node {
+              id
+              title
+              url
+            }
+          }
+        }
+      }
+    }
+  } 
+`;
+
+//Same query as GET_ISSUES_OF_REPOSITORY but using template literals
+const getIssuesOfRepositoryQuery = (organization, repository) => `{
+  organization(login: "${organization}") {
+    name
+    url
+    repository(name: "${repository}") {
+      name
+      url
+      issues(last: 5) {
+        edges {
+          node {
+            id
+            title
+            url
+          }
+        }
+      }
+    }
+  }
+}`;
+
+
+const getIssuesOfRepository = path => {
+  //since the split method returns an array of values and it is assumed that there is only one slash in the path
+  //the array should consist of two values: the organization and repository. That's why we used array destructuring here
+  const [ organization, repository ] = path.split('/'); 
+
+  //we use axios to perform a HTTP POST request with a GraphQL query as payload
+  //Since axios uses promises, the promise resolves eventually and you should have the result from the GraphQL API.
+  //We send the variables needed for the query along with the query itself (GraphQL)
+  return axiosGitHubGraphQL.post('', {
+    query: GET_ISSUES_OF_REPOSITORY,
+        variables: {
+          organization,
+          repository
+        }
+  });
+};
+
+//HOF high-order-function
+//We use a high order function to pass the result of a promise and at the same time we provide a function to use in the this.setState
+const resolveIssuesQuery = queryResult => () => ({
+  organization: queryResult.data.data.organization,
+  errors: queryResult.data.errors,
+});
+
+
 class App extends Component {
 
   state = {
@@ -34,7 +116,7 @@ class App extends Component {
 
   componentDidMount() {
     //fetch data
-    this.onFetchFromGitHub();
+    this.onFetchFromGitHub(this.state.path);
   }
 
   onChange = event => {
@@ -46,19 +128,15 @@ class App extends Component {
   onSubmit = event => {
     //fetch data
     event.preventDefault();
+
+    this.onFetchFromGitHub(this.state.path);
   }
 
-  //we use axios to perform a HTTP POST request with a GraphQL query as payload
-  //Since axios uses promises, the promise resolves eventually and you should have the result from the GraphQL API.
-  onFetchFromGitHub = () => {
-    axiosGitHubGraphQL.post('', {
-      query: GET_ORGANIZATION
-    })
-    .then(result => this.setState(() => ({
-        organization: result.data.data.organization,
-        errors: result.data.errors,
-      })),
-    );
+  onFetchFromGitHub = path => {
+    getIssuesOfRepository(path)
+      .then( queryResult => this.setState(
+        resolveIssuesQuery(queryResult)),
+      );
   };
 
   render() {
