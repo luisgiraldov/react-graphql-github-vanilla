@@ -38,14 +38,16 @@ const GET_REPOSITORY_OF_ORGANIZATION = `{
 
 //GraphQL query to get Issues of repository
 const GET_ISSUES_OF_REPOSITORY = `
-  query ($organization: String!, $repository: String!) {
+  query ($organization: String!, 
+         $repository: String!,
+         $cursor: String) {
     organization(login: $organization) {
       name
       url
       repository(name: $repository) {
         name
         url
-        issues(last: 5, states: [OPEN]) {
+        issues(first: 5, after: $cursor, states: [OPEN]) {
           edges {
             node {
               id
@@ -57,15 +59,19 @@ const GET_ISSUES_OF_REPOSITORY = `
                     id
                     content
                   }
-                }
+                } 
               }
             }
           }
+          totalCount
+                pageInfo {
+                  endCursor
+                  hasNextPage
+                }
         }
       }
     }
-  } 
-`;
+  }`;
 
 //Same query as GET_ISSUES_OF_REPOSITORY but using template literals
 const getIssuesOfRepositoryQuery = (organization, repository) => `{
@@ -89,7 +95,7 @@ const getIssuesOfRepositoryQuery = (organization, repository) => `{
 }`;
 
 
-const getIssuesOfRepository = path => {
+const getIssuesOfRepository = (path, cursor) => {
   //since the split method returns an array of values and it is assumed that there is only one slash in the path
   //the array should consist of two values: the organization and repository. That's why we used array destructuring here
   const [ organization, repository ] = path.split('/'); 
@@ -101,17 +107,44 @@ const getIssuesOfRepository = path => {
     query: GET_ISSUES_OF_REPOSITORY,
         variables: {
           organization,
-          repository
+          repository,
+          cursor
         }
   });
 };
 
 //HOF high-order-function
 //We use a high order function to pass the result of a promise and at the same time we provide a function to use in the this.setState
-const resolveIssuesQuery = queryResult => () => ({
-  organization: queryResult.data.data.organization,
-  errors: queryResult.data.errors,
-});
+const resolveIssuesQuery = (queryResult, cursor) => state => {
+  const { data, errors } = queryResult.data;
+  
+  if(!cursor) {
+    return {
+      organization: data.organization,
+      errors
+    }
+  }
+
+  const { edges: oldIssues } = state.organization.repository.issues;
+
+  const { edges: newIssues } = data.organization.repository.issues;
+
+  const updatedIssues = [...oldIssues, ...newIssues];
+
+  return {
+    organization: {
+      ...data.organization,
+      repository: {
+        ...data.organization.repository,
+        issues: {
+          ...data.organization.repository.issues,
+          edges: updatedIssues
+        },
+      },
+    },
+    errors,
+  };
+};
 
 
 class App extends Component {
@@ -140,11 +173,17 @@ class App extends Component {
     this.onFetchFromGitHub(this.state.path);
   }
 
-  onFetchFromGitHub = path => {
-    getIssuesOfRepository(path)
+  onFetchFromGitHub = (path, cursor) => {
+    getIssuesOfRepository(path, cursor)
       .then( queryResult => this.setState(
-        resolveIssuesQuery(queryResult)),
+        resolveIssuesQuery(queryResult, cursor)),
       );
+  };
+
+  onFetchMoreIssues = () => {
+    const { endCursor } = this.state.organization.repository.issues.pageInfo;
+
+    this.onFetchFromGitHub(this.state.path, endCursor);
   };
 
   render() {
@@ -164,7 +203,7 @@ class App extends Component {
         <hr />
         {/* Here comes the result! */}
         { organization ? (
-            <Organization organization={organization} errors={errors} />) 
+            <Organization organization={organization} errors={errors} onFetchMoreIssues={this.onFetchMoreIssues} />) 
             :
             (<p>No Information yet...</p>)
         }
